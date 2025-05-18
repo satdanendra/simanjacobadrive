@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\TimController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -15,6 +16,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Routes untuk Tim
+    Route::get('/tim', [TimController::class, 'index'])->name('tim.index');
+    Route::get('/tim/import', [TimController::class, 'importForm'])->name('tim.import.form');
+    Route::post('/tim/import', [TimController::class, 'import'])->name('tim.import');
 });
 
 require __DIR__.'/auth.php';
