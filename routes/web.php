@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ProyekController;
 use App\Http\Controllers\TimController;
 use Illuminate\Support\Facades\Route;
 
@@ -21,6 +22,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/tim', [TimController::class, 'index'])->name('tim.index');
     Route::get('/tim/import', [TimController::class, 'importForm'])->name('tim.import.form');
     Route::post('/tim/import', [TimController::class, 'import'])->name('tim.import');
+
+    // Routes untuk Proyek
+    Route::get('/tim/{tim}/proyek', [ProyekController::class, 'index'])->name('proyek.index');
+    Route::get('/tim/{tim}/proyek/create', [ProyekController::class, 'create'])->name('proyek.create');
+    Route::post('/tim/{tim}/proyek', [ProyekController::class, 'store'])->name('proyek.store');
 });
 
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

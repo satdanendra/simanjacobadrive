@@ -18,9 +18,9 @@
             <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900 dark:text-gray-100">
                     @if (session('success'))
-                        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4" role="alert">
-                            <p>{{ session('success') }}</p>
-                        </div>
+                    <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4" role="alert">
+                        <p>{{ session('success') }}</p>
+                    </div>
                     @endif
 
                     <div class="overflow-x-auto">
@@ -37,9 +37,13 @@
                                     <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">
                                         <td class="px-6 py-4">{{ $index + 1 }}</td>
                                         <td class="px-6 py-4">{{ $tim->kode_tim }}</td>
-                                        <td class="px-6 py-4">{{ $tim->nama_tim }}</td>
+                                        <td class="px-6 py-4">
+                                            <a href="{{ route('proyek.index', $tim->id) }}" class="text-blue-600 dark:text-blue-400 hover:underline">
+                                                {{ $tim->nama_tim }}
+                                            </a>
+                                        </td>
                                     </tr>
-                                @empty
+                                    @empty
                                     <tr>
                                         <td colspan="3" class="px-6 py-4 text-center">Tidak ada data tim</td>
                                     </tr>

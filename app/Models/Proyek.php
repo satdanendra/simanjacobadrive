@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Tim extends Model
+class Proyek extends Model
 {
     use HasFactory;
 
@@ -14,7 +14,7 @@ class Tim extends Model
      *
      * @var string
      */
-    protected $table = 'tims';
+    protected $table = 'proyeks';
 
     /**
      * The attributes that are mass assignable.
@@ -22,15 +22,16 @@ class Tim extends Model
      * @var array<int, string>
      */
     protected $fillable = [
-        'kode_tim',
-        'nama_tim',
+        'tim_id',
+        'kode_proyek',
+        'nama_proyek',
     ];
 
     /**
-     * Get the proyeks for the tim.
+     * Get the tim that owns the proyek.
      */
-    public function proyeks()
+    public function tim()
     {
-        return $this->hasMany(Proyek::class);
+        return $this->belongsTo(Tim::class);
     }
 }
