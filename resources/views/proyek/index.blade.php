@@ -39,6 +39,7 @@
                                     <th scope="col" class="px-6 py-3">No</th>
                                     <th scope="col" class="px-6 py-3">Kode Proyek</th>
                                     <th scope="col" class="px-6 py-3">Nama Proyek</th>
+                                    <th scope="col" class="px-6 py-3">Bukti Dukung</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -46,11 +47,23 @@
                                     <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">
                                         <td class="px-6 py-4">{{ $index + 1 }}</td>
                                         <td class="px-6 py-4">{{ $proyek->kode_proyek }}</td>
-                                        <td class="px-6 py-4">{{ $proyek->nama_proyek }}</td>
+                                        <td class="px-6 py-4">
+                                            <a href="{{ route('bukti-dukung.index', $proyek->id) }}" class="text-blue-600 dark:text-blue-400 hover:underline">
+                                                {{ $proyek->nama_proyek }}
+                                            </a>
+                                        </td>
+                                        <td class="px-6 py-4">
+                                            <a href="{{ route('bukti-dukung.index', $proyek->id) }}" class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                </svg>
+                                                Lihat Bukti
+                                            </a>
+                                        </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="px-6 py-4 text-center">Tidak ada data proyek</td>
+                                        <td colspan="4" class="px-6 py-4 text-center">Tidak ada data proyek</td>
                                     </tr>
                                 @endforelse
                             </tbody>

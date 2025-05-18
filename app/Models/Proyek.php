@@ -34,4 +34,12 @@ class Proyek extends Model
     {
         return $this->belongsTo(Tim::class);
     }
+
+    /**
+     * Get the bukti dukungs for the proyek.
+     */
+    public function buktiDukungs()
+    {
+        return $this->hasMany(BuktiDukung::class);
+    }
 }

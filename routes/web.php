@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BuktiDukungController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProyekController;
 use App\Http\Controllers\TimController;
@@ -27,6 +28,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/tim/{tim}/proyek', [ProyekController::class, 'index'])->name('proyek.index');
     Route::get('/tim/{tim}/proyek/create', [ProyekController::class, 'create'])->name('proyek.create');
     Route::post('/tim/{tim}/proyek', [ProyekController::class, 'store'])->name('proyek.store');
+
+    // Routes untuk Bukti Dukung
+    Route::get('/proyek/{proyek}/bukti-dukung', [BuktiDukungController::class, 'index'])->name('bukti-dukung.index');
+    Route::get('/proyek/{proyek}/bukti-dukung/create', [BuktiDukungController::class, 'create'])->name('bukti-dukung.create');
+    Route::post('/proyek/{proyek}/bukti-dukung', [BuktiDukungController::class, 'store'])->name('bukti-dukung.store');
+    Route::delete('/bukti-dukung/{buktiDukung}', [BuktiDukungController::class, 'destroy'])->name('bukti-dukung.destroy');
+    Route::get('/bukti-dukung/{buktiDukung}/view', [BuktiDukungController::class, 'view'])->name('bukti-dukung.view');
+    Route::get('/bukti-dukung/{buktiDukung}/download', [BuktiDukungController::class, 'download'])->name('bukti-dukung.download');
 });
 
 require __DIR__ . '/auth.php';
