@@ -68,7 +68,7 @@ class BuktiDukungController extends Controller
                 BuktiDukung::create([
                     'proyek_id' => $proyek->id,
                     'nama_file' => $originalName,
-                    'file_path' => null, // Tidak perlu path lokal karena disimpan di Drive
+                    'file_path' => 'google_drive', // Tidak perlu path lokal karena disimpan di Drive
                     'drive_id' => $driveId,
                     'file_type' => $fileType,
                     'extension' => $extension,

@@ -4,6 +4,7 @@ use App\Http\Controllers\BuktiDukungController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProyekController;
 use App\Http\Controllers\TimController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -36,6 +37,16 @@ Route::middleware('auth')->group(function () {
     Route::delete('/bukti-dukung/{buktiDukung}', [BuktiDukungController::class, 'destroy'])->name('bukti-dukung.destroy');
     Route::get('/bukti-dukung/{buktiDukung}/view', [BuktiDukungController::class, 'view'])->name('bukti-dukung.view');
     Route::get('/bukti-dukung/{buktiDukung}/download', [BuktiDukungController::class, 'download'])->name('bukti-dukung.download');
+});
+
+// Route untuk Google OAuth callback
+Route::get('/auth/google/callback', function (Request $request) {
+    // Tampilkan kode auth untuk disalin
+    if ($request->has('code')) {
+        return view('google-callback', ['code' => $request->code]);
+    }
+
+    return 'Tidak ada kode authorization yang diterima.';
 });
 
 require __DIR__ . '/auth.php';
