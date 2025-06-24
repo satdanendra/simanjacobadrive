@@ -11,6 +11,7 @@
         "laravel/framework": "^11.31",
         "laravel/tinker": "^2.9",
         "phpoffice/phpspreadsheet": "^4.2",
+        "phpoffice/phpword": "^1.4",
         "spatie/laravel-google-cloud-storage": "^2.3"
     },
     "require-dev": {

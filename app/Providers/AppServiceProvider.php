@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use App\Services\GoogleDriveService;
+use App\Services\LaporanWordService;
+
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -14,6 +16,10 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(GoogleDriveService::class, function ($app) {
             return new GoogleDriveService();
+        });
+
+        $this->app->singleton(LaporanWordService::class, function ($app) {
+            return new LaporanWordService();
         });
     }
 

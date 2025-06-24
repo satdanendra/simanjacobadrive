@@ -2,10 +2,9 @@
 
 namespace App\Services;
 
-use Google_Client; 
-use Google_Service_Drive;
-use Google_Service_Drive_DriveFile;
-use Illuminate\Http\UploadedFile;
+use Google\Client as Google_Client;
+use Google\Service\Drive as Google_Service_Drive;
+use Google\Service\Drive\DriveFile as Google_Service_Drive_DriveFile;
 use Illuminate\Support\Facades\Log;
 
 class GoogleDriveService
@@ -16,51 +15,51 @@ class GoogleDriveService
 
     public function __construct()
     {
-        // Create client with the correct class
+        // Inisialisasi Google Client
         $this->client = new Google_Client();
         $this->client->setClientId(config('services.google.client_id'));
         $this->client->setClientSecret(config('services.google.client_secret'));
-        
-        // Set access token from refresh token
+
+        // Autentikasi dengan refresh token
         $this->client->fetchAccessTokenWithRefreshToken(config('services.google.refresh_token'));
         $this->client->setAccessType('offline');
         $this->client->setScopes([
             Google_Service_Drive::DRIVE,
             Google_Service_Drive::DRIVE_FILE
         ]);
-        
+
         $this->service = new Google_Service_Drive($this->client);
         $this->folderId = config('services.google.folder_id');
     }
 
     /**
-     * Upload file ke Google Drive.
+     * Upload file dari path lokal ke Google Drive.
      *
-     * @param UploadedFile $file
+     * @param string $filePath
      * @param string $filename
      * @return string|null Drive ID jika berhasil
      */
-    public function uploadFile(UploadedFile $file, $filename)
+    public function uploadFile(string $filePath, string $filename): ?string
     {
         try {
-            // Set metadata file
+            // Siapkan metadata file
             $fileMetadata = new Google_Service_Drive_DriveFile([
                 'name' => $filename,
                 'parents' => [$this->folderId]
             ]);
 
-            // Baca content file
-            $content = file_get_contents($file->getRealPath());
-            
-            // Upload file ke Drive
+            // Baca isi file dari path lokal
+            $content = file_get_contents($filePath);
+            $mimeType = mime_content_type($filePath);
+
+            // Upload ke Google Drive
             $uploadedFile = $this->service->files->create($fileMetadata, [
                 'data' => $content,
-                'mimeType' => $file->getMimeType(),
+                'mimeType' => $mimeType,
                 'uploadType' => 'multipart',
                 'fields' => 'id'
             ]);
 
-            // Kembalikan ID file yang diupload
             return $uploadedFile->getId();
         } catch (\Exception $e) {
             Log::error('Google Drive Upload Error: ' . $e->getMessage());
@@ -68,46 +67,22 @@ class GoogleDriveService
         }
     }
 
-    /**
-     * Ambil URL untuk melihat file.
-     *
-     * @param string $fileId
-     * @return string
-     */
-    public function getViewUrl($fileId)
+    public function getViewUrl(string $fileId): string
     {
         return "https://drive.google.com/file/d/{$fileId}/view";
     }
-    
-    /**
-     * Ambil URL untuk download file.
-     *
-     * @param string $fileId
-     * @return string
-     */
-    public function getDownloadUrl($fileId)
+
+    public function getDownloadUrl(string $fileId): string
     {
         return "https://drive.google.com/uc?export=download&id={$fileId}";
     }
-    
-    /**
-     * Ambil URL untuk thumbnail file.
-     *
-     * @param string $fileId
-     * @return string
-     */
-    public function getThumbnailUrl($fileId)
+
+    public function getThumbnailUrl(string $fileId): string
     {
         return "https://drive.google.com/thumbnail?id={$fileId}";
     }
-    
-    /**
-     * Hapus file dari Drive.
-     *
-     * @param string $fileId
-     * @return bool
-     */
-    public function deleteFile($fileId)
+
+    public function deleteFile(string $fileId): bool
     {
         try {
             $this->service->files->delete($fileId);

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\BuktiDukungController;
+use App\Http\Controllers\LaporanHarianController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProyekController;
 use App\Http\Controllers\TimController;
@@ -37,6 +38,15 @@ Route::middleware('auth')->group(function () {
     Route::delete('/bukti-dukung/{buktiDukung}', [BuktiDukungController::class, 'destroy'])->name('bukti-dukung.destroy');
     Route::get('/bukti-dukung/{buktiDukung}/view', [BuktiDukungController::class, 'view'])->name('bukti-dukung.view');
     Route::get('/bukti-dukung/{buktiDukung}/download', [BuktiDukungController::class, 'download'])->name('bukti-dukung.download');
+
+    // Routes untuk Laporan Harian
+    Route::get('/laporan-harian', [LaporanHarianController::class, 'index'])->name('laporan-harian.index');
+    Route::get('/proyek/{proyek}/laporan-harian/create', [LaporanHarianController::class, 'create'])->name('laporan-harian.create');
+    Route::post('/proyek/{proyek}/laporan-harian', [LaporanHarianController::class, 'store'])->name('laporan-harian.store');
+    Route::get('/laporan-harian/{laporan}', [LaporanHarianController::class, 'show'])->name('laporan-harian.show');
+    Route::get('/laporan-harian/{laporan}/download', [LaporanHarianController::class, 'download'])->name('laporan-harian.download');
+    Route::get('/laporan-harian/{laporan}/view', [LaporanHarianController::class, 'view'])->name('laporan-harian.view');
+    Route::delete('/laporan-harian/{laporan}', [LaporanHarianController::class, 'destroy'])->name('laporan-harian.destroy');
 });
 
 // Route untuk Google OAuth callback

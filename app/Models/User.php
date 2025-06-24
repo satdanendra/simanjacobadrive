@@ -45,4 +45,12 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    /**
+     * Get the laporan harians for the user.
+     */
+    public function laporanHarians()
+    {
+        return $this->hasMany(LaporanHarian::class);
+    }
 }
