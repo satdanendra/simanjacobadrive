@@ -61,13 +61,13 @@ class LaporanHarian extends Model
     public function getFormattedWaktuAttribute()
     {
         if ($this->tipe_waktu === 'satu_hari') {
-            $tanggal = $this->tanggal_mulai->format('d F Y');
+            $tanggal = $this->tanggal_mulai->isoFormat('D MMMM Y');
             if ($this->jam_mulai && $this->jam_selesai) {
                 return $tanggal . ', ' . $this->jam_mulai->format('H:i') . ' - ' . $this->jam_selesai->format('H:i');
             }
             return $tanggal;
         } else {
-            return $this->tanggal_mulai->format('d F Y') . ' - ' . $this->tanggal_selesai->format('d F Y');
+            return $this->tanggal_mulai->isoFormat('D MMMM Y') . ' - ' . $this->tanggal_selesai->isoFormat('D MMMM Y');
         }
     }
 }

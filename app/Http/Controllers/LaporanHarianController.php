@@ -10,6 +10,7 @@ use App\Services\LaporanWordService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class LaporanHarianController extends Controller
@@ -42,10 +43,10 @@ class LaporanHarianController extends Controller
     public function create($proyekId)
     {
         $proyek = Proyek::with(['tim', 'buktiDukungs'])->findOrFail($proyekId);
-        
+
         // Pastikan user adalah bagian dari tim proyek ini
         // Asumsi: ada relasi user dengan tim (perlu disesuaikan dengan struktur data Anda)
-        
+
         return view('laporan-harian.create', compact('proyek'));
     }
 
@@ -114,35 +115,115 @@ class LaporanHarianController extends Controller
             }
 
             // Generate dokumen Word
-            $documentPath = $this->wordService->generateLaporan($laporan);
+            try {
+                $documentPath = $this->wordService->generateLaporan($laporan);
 
-            if ($documentPath) {
-                // Upload ke Google Drive
+                if (!$documentPath || !file_exists($documentPath)) {
+                    throw new \Exception('Gagal membuat dokumen Word. File tidak ditemukan.');
+                }
+            } catch (\Exception $e) {
+                throw new \Exception('Error saat generate dokumen Word: ' . $e->getMessage());
+            }
+
+            // Upload ke Google Drive
+            try {
                 $filename = $this->generateFilename($laporan);
                 $driveId = $this->driveService->uploadFile($documentPath, $filename);
 
-                if ($driveId) {
-                    $laporan->update([
-                        'file_path' => $filename,
-                        'drive_id' => $driveId,
-                    ]);
+                if (!$driveId) {
+                    throw new \Exception('Gagal mengupload file ke Google Drive. Silakan coba lagi.');
+                }
 
-                    // Hapus file temporary
+                $laporan->update([
+                    'file_path' => $filename,
+                    'drive_id' => $driveId,
+                ]);
+
+                // Hapus file temporary
+                if (file_exists($documentPath)) {
                     unlink($documentPath);
                 }
+            } catch (\Exception $e) {
+                // Jika error upload, tetap simpan laporan tapi tanpa file
+                Log::error('Error upload to Google Drive: ' . $e->getMessage());
+
+                // Hapus file temporary jika ada
+                if (isset($documentPath) && file_exists($documentPath)) {
+                    unlink($documentPath);
+                }
+
+                DB::commit();
+
+                return redirect()->route('laporan-harian.show', $laporan->id)
+                    ->with('warning', 'Laporan berhasil dibuat, tetapi gagal mengupload ke Google Drive: ' . $e->getMessage())
+                    ->with('popup_type', 'warning')
+                    ->with('popup_title', 'Upload Gagal')
+                    ->with('popup_message', 'Laporan sudah tersimpan di database, namun tidak bisa diupload ke Google Drive. Anda bisa mencoba generate ulang nanti.');
             }
 
             DB::commit();
 
             return redirect()->route('laporan-harian.show', $laporan->id)
-                ->with('success', 'Laporan harian berhasil dibuat dan disimpan ke Google Drive.');
+                ->with('success', 'Laporan harian berhasil dibuat dan disimpan ke Google Drive.')
+                ->with('popup_type', 'success')
+                ->with('popup_title', 'Berhasil!')
+                ->with('popup_message', 'Laporan harian telah berhasil dibuat dan disimpan ke Google Drive.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollback();
+            throw $e; // Re-throw validation errors
 
         } catch (\Exception $e) {
             DB::rollback();
+
+            Log::error('Error creating laporan harian: ' . $e->getMessage(), [
+                'user_id' => Auth::id(),
+                'proyek_id' => $proyekId,
+                'error' => $e->getTraceAsString()
+            ]);
+
             return redirect()->back()
-                ->with('error', 'Terjadi kesalahan saat membuat laporan: ' . $e->getMessage())
+                ->with('error', 'Terjadi kesalahan saat membuat laporan.')
+                ->with('popup_type', 'error')
+                ->with('popup_title', 'Error!')
+                ->with('popup_message', $this->getErrorMessage($e))
                 ->withInput();
         }
+    }
+
+    /**
+     * Get user-friendly error message based on exception type
+     */
+    private function getErrorMessage(\Exception $e)
+    {
+        $message = $e->getMessage();
+
+        // Database errors
+        if (str_contains($message, 'Connection refused') || str_contains($message, 'SQLSTATE')) {
+            return 'Terjadi masalah koneksi database. Silakan coba lagi dalam beberapa saat.';
+        }
+
+        // Google Drive errors
+        if (str_contains($message, 'Google') || str_contains($message, 'Drive') || str_contains($message, 'OAuth')) {
+            return 'Terjadi masalah saat mengakses Google Drive. Periksa koneksi internet dan coba lagi.';
+        }
+
+        // File system errors
+        if (str_contains($message, 'Permission denied') || str_contains($message, 'mkdir')) {
+            return 'Terjadi masalah izin file sistem. Hubungi administrator.';
+        }
+
+        // PhpWord errors
+        if (str_contains($message, 'PhpWord') || str_contains($message, 'Word')) {
+            return 'Terjadi masalah saat membuat dokumen. Coba periksa data yang diinput.';
+        }
+
+        // Memory errors
+        if (str_contains($message, 'memory') || str_contains($message, 'Memory')) {
+            return 'File terlalu besar untuk diproses. Coba kurangi jumlah bukti dukung.';
+        }
+
+        // Generic error for unknown issues
+        return 'Terjadi kesalahan sistem yang tidak diketahui. Silakan coba lagi atau hubungi administrator jika masalah berlanjut.';
     }
 
     /**
@@ -233,7 +314,7 @@ class LaporanHarianController extends Controller
         $proyek = Str::slug($laporan->proyek->nama_proyek);
         $tanggal = $laporan->tanggal_mulai->format('Y-m-d');
         $user = Str::slug($laporan->user->name);
-        
+
         return "Laporan_Harian_{$proyek}_{$tanggal}_{$user}.docx";
     }
 }
