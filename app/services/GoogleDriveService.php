@@ -67,6 +67,74 @@ class GoogleDriveService
         }
     }
 
+    /**
+     * Mendapatkan informasi file dari Google Drive
+     *
+     * @param string $fileId
+     * @return array|null
+     */
+    public function getFileInfo(string $fileId): ?array
+    {
+        try {
+            $file = $this->service->files->get($fileId, [
+                'fields' => 'id,name,size,mimeType,createdTime,modifiedTime'
+            ]);
+
+            return [
+                'id' => $file->getId(),
+                'name' => $file->getName(),
+                'size' => $file->getSize(),
+                'mimeType' => $file->getMimeType(),
+                'createdTime' => $file->getCreatedTime(),
+                'modifiedTime' => $file->getModifiedTime()
+            ];
+        } catch (\Exception $e) {
+            Log::error('Google Drive Get File Info Error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Download konten file dari Google Drive
+     *
+     * @param string $fileId
+     * @return string|null Binary content dari file
+     */
+    public function downloadFileContent(string $fileId): ?string
+    {
+        try {
+            // Metode alternatif menggunakan cURL
+            $accessToken = $this->client->getAccessToken();
+            
+            if (!$accessToken || !isset($accessToken['access_token'])) {
+                throw new \Exception('No valid access token available');
+            }
+
+            $url = "https://www.googleapis.com/drive/v3/files/{$fileId}?alt=media";
+            
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Authorization: Bearer ' . $accessToken['access_token'],
+            ]);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            
+            $content = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode === 200 && $content !== false) {
+                return $content;
+            } else {
+                throw new \Exception("Failed to download file: HTTP {$httpCode}");
+            }
+        } catch (\Exception $e) {
+            Log::error('Google Drive Download Content Error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
     public function getViewUrl(string $fileId): string
     {
         return "https://drive.google.com/file/d/{$fileId}/view";
