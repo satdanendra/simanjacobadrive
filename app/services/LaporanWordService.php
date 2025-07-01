@@ -13,74 +13,109 @@ class LaporanWordService
 {
     public function generateLaporan(LaporanHarian $laporan)
     {
-        $phpWord = new PhpWord();
+        try {
+            Log::info("Mulai generate laporan", ['laporan_id' => $laporan->id]);
 
-        // Set bahasa Indonesia
-        $phpWord->getSettings()->setThemeFontLang(new Language('id-ID'));
+            $phpWord = new PhpWord();
 
-        // Buat section
-        $section = $phpWord->addSection([
-            'marginTop' => Converter::cmToTwip(2),
-            'marginBottom' => Converter::cmToTwip(2),
-            'marginLeft' => Converter::cmToTwip(2),
-            'marginRight' => Converter::cmToTwip(2),
-        ]);
+            // Set bahasa Indonesia
+            $phpWord->getSettings()->setThemeFontLang(new Language('id-ID'));
 
-        // Header styles
-        $headerStyle = ['name' => 'Arial', 'size' => 14, 'bold' => true];
-        $normalStyle = ['name' => 'Arial', 'size' => 10];
-        $boldStyle = ['name' => 'Arial', 'size' => 10, 'bold' => true];
+            // Buat section
+            $section = $phpWord->addSection([
+                'marginTop' => Converter::cmToTwip(2),
+                'marginBottom' => Converter::cmToTwip(2),
+                'marginLeft' => Converter::cmToTwip(2),
+                'marginRight' => Converter::cmToTwip(2),
+            ]);
 
-        // Title
-        $section->addText('Laporan Harian Pelaksanaan Pekerjaan', $headerStyle, ['alignment' => 'center']);
-        $section->addTextBreak(2);
+            // Header styles
+            $headerStyle = ['name' => 'Arial', 'size' => 14, 'bold' => true];
+            $normalStyle = ['name' => 'Arial', 'size' => 10];
+            $boldStyle = ['name' => 'Arial', 'size' => 10, 'bold' => true];
 
-        // Identitas Pegawai
-        $this->addIdentitasPegawai($section, $laporan, $boldStyle, $normalStyle);
-        $section->addTextBreak();
+            // Title
+            $section->addText('Laporan Harian Pelaksanaan Pekerjaan', $headerStyle, ['alignment' => 'center']);
+            $section->addTextBreak(2);
 
-        // Rencana Kerja dan Kegiatan
-        $this->addRencanaKerja($section, $laporan, $boldStyle, $normalStyle);
-        $section->addTextBreak();
+            // Identitas Pegawai
+            $this->addIdentitasPegawai($section, $laporan, $boldStyle, $normalStyle);
+            $section->addTextBreak();
 
-        // Dasar Pelaksanaan Kegiatan
-        $this->addDasarPelaksanaan($section, $laporan, $boldStyle, $normalStyle);
-        $section->addTextBreak();
+            // Rencana Kerja dan Kegiatan
+            $this->addRencanaKerja($section, $laporan, $boldStyle, $normalStyle);
+            $section->addTextBreak();
 
-        // Bukti Pelaksanaan Pekerjaan
-        $this->addBuktiPelaksanaan($section, $laporan, $boldStyle, $normalStyle);
-        $section->addTextBreak();
+            // Dasar Pelaksanaan Kegiatan
+            $this->addDasarPelaksanaan($section, $laporan, $boldStyle, $normalStyle);
+            $section->addTextBreak();
 
-        // Kendala dan Solusi
-        $this->addKendalaSolusi($section, $laporan, $boldStyle, $normalStyle);
-        $section->addTextBreak();
+            // Bukti Pelaksanaan Pekerjaan
+            $this->addBuktiPelaksanaan($section, $laporan, $boldStyle, $normalStyle);
+            $section->addTextBreak();
 
-        // Catatan
-        $this->addCatatan($section, $laporan, $boldStyle, $normalStyle);
-        $section->addTextBreak(2);
+            // Kendala dan Solusi
+            $this->addKendalaSolusi($section, $laporan, $boldStyle, $normalStyle);
+            $section->addTextBreak();
 
-        // Pengesahan
-        $this->addPengesahan($section, $laporan, $boldStyle, $normalStyle);
+            // Catatan
+            $this->addCatatan($section, $laporan, $boldStyle, $normalStyle);
+            $section->addTextBreak(2);
 
-        // Cek apakah ada bukti dukung
-        if ($laporan->buktiDukungs->count() > 0) {
-            // Tambah halaman baru untuk lampiran
-            $this->addLampiranPages($phpWord, $laporan, $boldStyle, $normalStyle);
+            // Pengesahan
+            $this->addPengesahan($section, $laporan, $boldStyle, $normalStyle);
+
+            // Cek apakah ada bukti dukung untuk lampiran
+            if ($laporan->buktiDukungs->count() > 0) {
+                Log::info("Adding lampiran pages", ['bukti_count' => $laporan->buktiDukungs->count()]);
+                // Tambah halaman baru untuk lampiran
+                $this->addLampiranPages($phpWord, $laporan, $boldStyle, $normalStyle);
+            }
+
+            // Pastikan folder temp ada
+            $tempDir = storage_path('app/temp');
+            if (!file_exists($tempDir)) {
+                mkdir($tempDir, 0755, true);
+            }
+
+            // Save dokumen
+            $filename = 'laporan_' . $laporan->id . '_' . time() . '.docx';
+            $tempPath = $tempDir . '/' . $filename;
+
+            Log::info("Saving document", ['temp_path' => $tempPath]);
+
+            // **PERBAIKAN**: Set memory limit dan timeout untuk file besar
+            ini_set('memory_limit', '512M');
+            set_time_limit(300); // 5 minutes
+
+            $objWriter = IOFactory::createWriter($phpWord, 'Word2007');
+            $objWriter->save($tempPath);
+
+            // Verifikasi file berhasil dibuat
+            if (!file_exists($tempPath) || filesize($tempPath) == 0) {
+                throw new \Exception('File dokumen tidak berhasil dibuat atau kosong');
+            }
+
+            Log::info("Document berhasil disimpan", [
+                'temp_path' => $tempPath,
+                'file_size' => filesize($tempPath)
+            ]);
+
+            // **PERBAIKAN**: Cleanup temporary image files SETELAH dokument selesai disave
+            $this->cleanupTempFiles();
+
+            return $tempPath;
+        } catch (\Exception $e) {
+            Log::error('Error dalam generateLaporan: ' . $e->getMessage(), [
+                'laporan_id' => $laporan->id,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            // Cleanup jika terjadi error
+            $this->cleanupTempFiles();
+
+            throw $e;
         }
-
-        // Save dokumen
-        $filename = 'laporan_' . time() . '.docx';
-        $tempPath = storage_path('app/temp/' . $filename);
-
-        // Pastikan folder temp ada
-        if (!file_exists(storage_path('app/temp'))) {
-            mkdir(storage_path('app/temp'), 0755, true);
-        }
-
-        $objWriter = IOFactory::createWriter($phpWord, 'Word2007');
-        $objWriter->save($tempPath);
-
-        return $tempPath;
     }
 
     private function addIdentitasPegawai($section, $laporan, $boldStyle, $normalStyle)
@@ -348,129 +383,396 @@ class LaporanWordService
     private function addImageToLampiran($section, $bukti)
     {
         try {
-            // Download gambar dari Google Drive
+            Log::info("Processing image", ['bukti_id' => $bukti->id, 'file' => $bukti->nama_file]);
+
+            // Download gambar (sama seperti sebelumnya)
             $imageContent = $this->downloadImageFromDrive($bukti->drive_id);
-
-            if ($imageContent) {
-                // Deteksi ekstensi file asli
-                $originalExtension = strtolower(pathinfo($bukti->nama_file, PATHINFO_EXTENSION));
-
-                // Validasi ekstensi yang didukung
-                $supportedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp'];
-                if (!in_array($originalExtension, $supportedExtensions)) {
-                    $section->addText(
-                        'Format gambar tidak didukung: ' . $originalExtension,
-                        ['color' => 'FF0000', 'italic' => true]
-                    );
-                    return;
-                }
-
-                // Buat nama file temporary dengan ekstensi yang benar
-                $tempImagePath = storage_path('app/temp/lampiran_' . time() . '_' . $bukti->id . '.' . $originalExtension);
-
-                // Pastikan folder temp ada
-                if (!file_exists(storage_path('app/temp'))) {
-                    mkdir(storage_path('app/temp'), 0755, true);
-                }
-
-                // Simpan content ke file temporary
-                $writeResult = file_put_contents($tempImagePath, $imageContent);
-
-                if ($writeResult === false) {
-                    throw new \Exception('Gagal menyimpan file temporary');
-                }
-
-                // Validasi file yang didownload
-                if (!file_exists($tempImagePath) || filesize($tempImagePath) == 0) {
-                    throw new \Exception('File temporary kosong atau tidak ada');
-                }
-
-                // Validasi apakah benar-benar file gambar
-                $imageInfo = @getimagesize($tempImagePath);
-                if ($imageInfo === false) {
-                    throw new \Exception('File bukan gambar yang valid');
-                }
-
-                // Hitung dimensi gambar untuk fit ke halaman
-                $maxWidth = Converter::cmToPixel(15);   // 15 cm max width
-                $maxHeight = Converter::cmToPixel(20);  // 20 cm max height
-
-                $imageWidth = $imageInfo[0];
-                $imageHeight = $imageInfo[1];
-
-                // Hitung ratio untuk maintain aspect ratio
-                $widthRatio = $maxWidth / $imageWidth;
-                $heightRatio = $maxHeight / $imageHeight;
-                $ratio = min($widthRatio, $heightRatio, 1); // Tidak lebih besar dari ukuran asli
-
-                $finalWidth = $imageWidth * $ratio;
-                $finalHeight = $imageHeight * $ratio;
-
-                // Tambahkan gambar ke dokumen dengan ukuran yang sesuai
-                $section->addImage($tempImagePath, [
-                    'width' => $finalWidth,
-                    'height' => $finalHeight,
-                    'wrappingStyle' => 'inline',
-                    'positioning' => 'relative',
-                    'alignment' => 'center'
-                ]);
-
-                // Tambahkan informasi gambar
-                $section->addTextBreak();
-                $section->addText(
-                    'Ukuran asli: ' . $imageWidth . 'x' . $imageHeight . ' pixels',
-                    ['size' => 9, 'italic' => true],
-                    ['alignment' => 'center']
-                );
-
-                // Hapus file temporary setelah digunakan
-                if (file_exists($tempImagePath)) {
-                    unlink($tempImagePath);
-                }
-            } else {
-                $section->addText(
-                    'Gagal mengunduh gambar dari Google Drive',
-                    ['color' => 'FF0000', 'italic' => true]
-                );
+            if (!$imageContent) {
+                $this->addImageFallback($section, $bukti, 'Gagal mengunduh gambar dari Google Drive');
+                return;
             }
-        } catch (\Exception $e) {
-            // Log error untuk debugging
-            Log::error('Error adding image to lampiran: ' . $e->getMessage(), [
-                'bukti_id' => $bukti->id,
-                'drive_id' => $bukti->drive_id,
-                'nama_file' => $bukti->nama_file
+
+            // Setup file temporary
+            $originalExtension = strtolower(pathinfo($bukti->nama_file, PATHINFO_EXTENSION));
+            $supportedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+
+            if (!in_array($originalExtension, $supportedExtensions)) {
+                $this->addImageFallback($section, $bukti, 'Format tidak didukung: ' . $originalExtension);
+                return;
+            }
+
+            $tempDir = storage_path('app/temp');
+            if (!file_exists($tempDir)) {
+                mkdir($tempDir, 0755, true);
+            }
+
+            $tempImagePath = $tempDir . '/img_' . time() . '_' . $bukti->id . '.' . $originalExtension;
+            file_put_contents($tempImagePath, $imageContent);
+            $this->tempFiles[] = $tempImagePath;
+
+            usleep(100000);
+
+            // Get image dimensions
+            $imageInfo = @getimagesize($tempImagePath);
+            if (!$imageInfo) {
+                $this->addImageFallback($section, $bukti, 'File bukan gambar valid');
+                return;
+            }
+
+            $originalWidth = $imageInfo[0];
+            $originalHeight = $imageInfo[1];
+
+            // Kalkulasi ukuran
+            $maxWidthCm = 15;
+            $maxHeightCm = 18;
+            $maxWidthPoints = $maxWidthCm * 28.35;
+            $maxHeightPoints = $maxHeightCm * 28.35;
+            $scale = min($maxWidthPoints / $originalWidth, $maxHeightPoints / $originalHeight, 1);
+            $finalWidthPoints = $originalWidth * $scale;
+            $finalHeightPoints = $originalHeight * $scale;
+
+            // **SOLUSI SIMPLE: Buat paragraph dengan center alignment terlebih dahulu**
+            $centerParagraph = $section->addTextRun(['alignment' => 'center']);
+
+            // Tambahkan gambar ke paragraph yang sudah center-aligned
+            $centerParagraph->addImage($tempImagePath, [
+                'width' => $finalWidthPoints,
+                'height' => $finalHeightPoints,
+                'wrappingStyle' => 'inline'
             ]);
 
+            // Text break
+            $section->addTextBreak();
+
+            // Info gambar juga dengan center alignment
             $section->addText(
-                'Error memuat gambar: ' . $e->getMessage(),
-                ['color' => 'FF0000', 'italic' => true]
+                'Ukuran asli: ' . $originalWidth . ' x ' . $originalHeight . ' pixels',
+                ['size' => 9, 'italic' => true, 'color' => '666666'],
+                ['alignment' => 'center']
             );
 
-            // Tambahkan fallback info
-            $section->addTextBreak();
-            $section->addText(
-                'Gambar dapat diakses melalui: ' . $this->getGoogleDriveViewUrl($bukti->drive_id),
-                ['size' => 9, 'underline' => 'single', 'color' => '0000FF']
-            );
+            if ($scale < 1) {
+                $section->addText(
+                    'Diperkecil menjadi: ' . round($finalWidthPoints) . ' x ' . round($finalHeightPoints) . ' points (' . round($scale * 100, 1) . '%)',
+                    ['size' => 8, 'italic' => true, 'color' => '888888'],
+                    ['alignment' => 'center']
+                );
+            }
+
+            Log::info("Image inserted with simple center alignment", ['bukti_id' => $bukti->id]);
+        } catch (\Exception $e) {
+            Log::error('Error inserting image: ' . $e->getMessage(), [
+                'bukti_id' => $bukti->id,
+                'file' => $bukti->nama_file ?? 'unknown'
+            ]);
+
+            $this->addImageFallback($section, $bukti, 'Error: ' . $e->getMessage());
         }
+    }
+
+    // Method helper untuk fallback ketika gambar gagal dimuat
+    private function addImageFallback($section, $bukti, $errorMessage)
+    {
+        $section->addText($errorMessage, ['color' => 'FF0000', 'italic' => true]);
+
+        // Tambahkan info file
+        $section->addTextBreak();
+        $section->addText("File: {$bukti->nama_file}", ['bold' => true]);
+
+        if ($bukti->keterangan) {
+            $section->addText("Keterangan: {$bukti->keterangan}");
+        }
+
+        // Tambahkan link Google Drive sebagai fallback
+        $section->addTextBreak();
+        $section->addText(
+            'Gambar dapat diakses melalui: ' . $this->getGoogleDriveViewUrl($bukti->drive_id),
+            ['size' => 9, 'underline' => 'single', 'color' => '0000FF']
+        );
+    }
+
+    // **PERBAIKAN**: Modifikasi method generateLaporan untuk cleanup file temporary di akhir
+    // Tambahkan property untuk track temporary files
+    private $tempFiles = [];
+
+    // Di method addImageToLampiran, setelah berhasil buat temp file:
+    // $this->tempFiles[] = $tempImagePath;
+
+    // Di akhir method generateLaporan, tambahkan cleanup:
+    private function cleanupTempFiles()
+    {
+        foreach ($this->tempFiles as $tempFile) {
+            if (file_exists($tempFile)) {
+                try {
+                    unlink($tempFile);
+                    Log::info("Cleaned up temp file: " . $tempFile);
+                } catch (\Exception $e) {
+                    Log::warning("Failed to cleanup temp file: " . $tempFile . " - " . $e->getMessage());
+                }
+            }
+        }
+        $this->tempFiles = [];
     }
 
     private function addDocumentToLampiran($section, $bukti, $normalStyle)
     {
-        // Untuk dokumen (PDF, Word, Excel, dll)
-        $section->addText("Dokumen: {$bukti->nama_file}", $normalStyle);
-        $section->addText("Tipe: {$bukti->file_type}", $normalStyle);
-        $section->addText("Ukuran: " . $this->getFileSize($bukti), $normalStyle);
+        try {
+            Log::info("Processing document for lampiran", [
+                'bukti_id' => $bukti->id,
+                'file' => $bukti->nama_file,
+                'type' => $bukti->file_type,
+                'drive_id' => $bukti->drive_id
+            ]);
 
-        // Info tambahan
-        $section->addTextBreak();
+            $driveService = app(\App\Services\GoogleDriveService::class);
+
+            // Try to get enhanced document preview
+            $previewData = $driveService->getEnhancedDocumentPreview($bukti->drive_id);
+
+            if ($previewData && $previewData['content']) {
+                Log::info("Preview found, adding as image", [
+                    'bukti_id' => $bukti->id,
+                    'method' => $previewData['method'],
+                    'size' => $previewData['size']
+                ]);
+
+                $this->addDocumentPreviewAsImage($section, $bukti, $previewData, $normalStyle);
+            } else {
+                Log::info("No preview available, showing info only", ['bukti_id' => $bukti->id]);
+
+                // Try alternative methods before giving up
+                $alternativePreview = $driveService->tryAlternativePreview($bukti->drive_id);
+
+                if ($alternativePreview) {
+                    Log::info("Alternative preview found", [
+                        'bukti_id' => $bukti->id,
+                        'size' => strlen($alternativePreview)
+                    ]);
+
+                    $previewData = [
+                        'content' => $alternativePreview,
+                        'method' => 'alternative',
+                        'size' => strlen($alternativePreview)
+                    ];
+
+                    $this->addDocumentPreviewAsImage($section, $bukti, $previewData, $normalStyle);
+                } else {
+                    // Final fallback: show document info only
+                    $this->addDocumentInfoOnly($section, $bukti, $normalStyle);
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('Error processing document: ' . $e->getMessage(), [
+                'bukti_id' => $bukti->id,
+                'file' => $bukti->nama_file,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            $this->addDocumentInfoOnly($section, $bukti, $normalStyle);
+        }
+    }
+
+    /**
+     * Add document preview as image with enhanced error handling
+     */
+    private function addDocumentPreviewAsImage($section, $bukti, $previewData, $normalStyle)
+    {
+        try {
+            $imageContent = $previewData['content'];
+            $method = $previewData['method'] ?? 'unknown';
+
+            // Validate image content
+            if (strlen($imageContent) < 1000) {
+                throw new \Exception("Image content too small (" . strlen($imageContent) . " bytes)");
+            }
+
+            // Create temp file for preview image
+            $tempImagePath = storage_path('app/temp/doc_preview_' . time() . '_' . $bukti->id . '.png');
+
+            // Ensure temp directory exists
+            $tempDir = dirname($tempImagePath);
+            if (!file_exists($tempDir)) {
+                mkdir($tempDir, 0755, true);
+            }
+
+            $writeResult = file_put_contents($tempImagePath, $imageContent);
+            if ($writeResult === false) {
+                throw new \Exception("Failed to write temp image file");
+            }
+
+            $this->tempFiles[] = $tempImagePath;
+
+            // Validate that it's a real image
+            $imageInfo = @getimagesize($tempImagePath);
+            if (!$imageInfo) {
+                throw new \Exception("Invalid image data");
+            }
+
+            $originalWidth = $imageInfo[0];
+            $originalHeight = $imageInfo[1];
+
+            Log::info("Valid preview image created", [
+                'bukti_id' => $bukti->id,
+                'method' => $method,
+                'dimensions' => $originalWidth . 'x' . $originalHeight,
+                'temp_path' => $tempImagePath
+            ]);
+
+            // Add document header
+            $section->addText("Dokumen: {$bukti->nama_file}", ['bold' => true], ['alignment' => 'center']);
+            $section->addText("Tipe: {$bukti->file_type}", $normalStyle, ['alignment' => 'center']);
+
+            // Get and display file size
+            try {
+                $driveService = app(\App\Services\GoogleDriveService::class);
+                $fileInfo = $driveService->getFileInfo($bukti->drive_id);
+                $size = isset($fileInfo['size']) ? $this->formatBytes($fileInfo['size']) : 'Unknown';
+                $section->addText("Ukuran File: {$size}", $normalStyle, ['alignment' => 'center']);
+            } catch (\Exception $e) {
+                Log::warning("Could not get file size", ['bukti_id' => $bukti->id]);
+            }
+
+            $section->addTextBreak();
+
+            // Calculate display size
+            $maxWidthCm = 15;   // Max 15cm width
+            $maxHeightCm = 20;  // Max 20cm height
+            $maxWidthPoints = $maxWidthCm * 28.35;
+            $maxHeightPoints = $maxHeightCm * 28.35;
+
+            $scale = min($maxWidthPoints / $originalWidth, $maxHeightPoints / $originalHeight, 1);
+            $finalWidth = $originalWidth * $scale;
+            $finalHeight = $originalHeight * $scale;
+
+            // Add preview image with center alignment
+            $centerParagraph = $section->addTextRun(['alignment' => 'center']);
+            $centerParagraph->addImage($tempImagePath, [
+                'width' => $finalWidth,
+                'height' => $finalHeight,
+                'wrappingStyle' => 'inline'
+            ]);
+
+            // Add info below image
+            $section->addTextBreak();
+            $section->addText(
+                "Preview Dokumen",
+                ['size' => 10, 'bold' => true],
+                ['alignment' => 'center']
+            );
+
+            $section->addText(
+                "Resolusi: {$originalWidth} x {$originalHeight} pixels",
+                ['size' => 9, 'italic' => true, 'color' => '666666'],
+                ['alignment' => 'center']
+            );
+
+            if ($scale < 1) {
+                $section->addText(
+                    "Diperkecil ke: " . round($finalWidth) . ' x ' . round($finalHeight) . " points (" . round($scale * 100, 1) . "%)",
+                    ['size' => 8, 'italic' => true, 'color' => '888888'],
+                    ['alignment' => 'center']
+                );
+            }
+
+            // Method info (for debugging)
+            $section->addText(
+                "Metode: " . ucfirst(str_replace('_', ' ', $method)),
+                ['size' => 8, 'italic' => true, 'color' => 'AAAAAA'],
+                ['alignment' => 'center']
+            );
+
+            // Add access link
+            $section->addTextBreak();
+            $section->addText(
+                "Akses dokumen lengkap:",
+                ['size' => 9, 'italic' => true],
+                ['alignment' => 'center']
+            );
+
+            $section->addText(
+                $this->getGoogleDriveViewUrl($bukti->drive_id),
+                ['size' => 9, 'underline' => 'single', 'color' => '0000FF'],
+                ['alignment' => 'center']
+            );
+
+            Log::info("Document preview added successfully", [
+                'bukti_id' => $bukti->id,
+                'method' => $method,
+                'final_dimensions' => round($finalWidth) . 'x' . round($finalHeight)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error adding document preview image: ' . $e->getMessage(), [
+                'bukti_id' => $bukti->id,
+                'method' => $previewData['method'] ?? 'unknown'
+            ]);
+
+            // Cleanup temp file if created
+            if (isset($tempImagePath) && file_exists($tempImagePath)) {
+                unlink($tempImagePath);
+                // Remove from tempFiles array
+                $this->tempFiles = array_filter($this->tempFiles, function ($file) use ($tempImagePath) {
+                    return $file !== $tempImagePath;
+                });
+            }
+
+            // Fallback to info only
+            $this->addDocumentInfoOnly($section, $bukti, $normalStyle);
+        }
+    }
+
+    /**
+     * Enhanced document info only (improved styling)
+     */
+    private function addDocumentInfoOnly($section, $bukti, $normalStyle)
+    {
+        // Document header with better styling
+        $section->addText("Dokumen: {$bukti->nama_file}", ['bold' => true, 'size' => 12], ['alignment' => 'center']);
+        $section->addText("Tipe: {$bukti->file_type}", $normalStyle, ['alignment' => 'center']);
+
+        // Get file size
+        try {
+            $driveService = app(\App\Services\GoogleDriveService::class);
+            $fileInfo = $driveService->getFileInfo($bukti->drive_id);
+            $size = isset($fileInfo['size']) ? $this->formatBytes($fileInfo['size']) : 'Unknown';
+            $section->addText("Ukuran: {$size}", $normalStyle, ['alignment' => 'center']);
+        } catch (\Exception $e) {
+            Log::warning("Could not get file size", ['bukti_id' => $bukti->id]);
+        }
+
+        $section->addTextBreak(2);
+
+        // Better explanation with icon-like text
         $section->addText(
-            "Dokumen ini tersimpan di Google Drive dan dapat diakses melalui sistem.",
-            ['italic' => true, 'size' => 10]
+            "📄 Preview Visual Tidak Tersedia",
+            ['bold' => true, 'size' => 11, 'color' => '666666'],
+            ['alignment' => 'center']
         );
 
-        // Jika ingin embed preview dokumen (advanced)
-        // $this->addDocumentPreview($section, $bukti);
+        $section->addText(
+            "Dokumen dapat diakses melalui link Google Drive di bawah ini",
+            ['italic' => true, 'size' => 10, 'color' => '666666'],
+            ['alignment' => 'center']
+        );
+
+        $section->addTextBreak();
+
+        // Access link with better styling
+        $section->addText(
+            "🔗 Buka Dokumen:",
+            ['bold' => true, 'size' => 10],
+            ['alignment' => 'center']
+        );
+
+        $section->addText(
+            $this->getGoogleDriveViewUrl($bukti->drive_id),
+            ['size' => 9, 'underline' => 'single', 'color' => '0000FF'],
+            ['alignment' => 'center']
+        );
+
+        Log::info("Document info added (no preview available)", [
+            'bukti_id' => $bukti->id,
+            'file' => $bukti->nama_file
+        ]);
     }
 
     private function getFileSize($bukti)
