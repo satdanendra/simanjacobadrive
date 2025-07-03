@@ -8,6 +8,9 @@ use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\Style\Language;
 use PhpOffice\PhpWord\Shared\Converter;
 use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpWord\Writer\HTML;
+use Dompdf\Dompdf;
+use Dompdf\Options;
 
 class LaporanWordService
 {
@@ -113,7 +116,10 @@ class LaporanWordService
 
             // **PERBAIKAN**: Cleanup temporary image files SETELAH dokument selesai disave
             $this->cleanupTempFiles();
-            return $tempPath;
+            Log::info("Document berhasil disimpan", [
+                'temp_path' => $tempPath,
+                'file_size' => filesize($tempPath)
+            ]);
         } catch (\Exception $e) {
             Log::error('Error dalam generateLaporan: ' . $e->getMessage(), [
                 'laporan_id' => $laporan->id,
@@ -123,6 +129,29 @@ class LaporanWordService
             // Cleanup jika terjadi error
             $this->cleanupTempFiles();
             throw $e;
+        }
+
+        try {
+            Log::info("Starting PDF conversion", ['word_path' => $tempPath]);
+            $pdfPath = $this->convertWordToPdf($tempPath);
+
+            // Cleanup Word file setelah konversi berhasil
+            if (file_exists($tempPath)) {
+                unlink($tempPath);
+                Log::info("Word file cleaned up", ['word_path' => $tempPath]);
+            }
+
+            // **PERBAIKAN**: Cleanup temporary image files SETELAH PDF conversion
+            $this->cleanupTempFiles();
+
+            Log::info("PDF generation completed", ['pdf_path' => $pdfPath]);
+            return $pdfPath;
+        } catch (\Exception $e) {
+            Log::error('PDF conversion failed, falling back to Word: ' . $e->getMessage());
+
+            // Fallback: return Word file jika PDF conversion gagal
+            $this->cleanupTempFiles();
+            return $tempPath;
         }
     }
 
@@ -443,9 +472,9 @@ class LaporanWordService
 
         // Tanda tangan
         $table->addRow();
-        $table->addCell(3333)->addText($laporan->user->name, ['bold' => true,'underline' => 'single'], ['alignment' => 'center']);
-        $table->addCell(3333)->addText('BENI NURROFIK', ['bold' => true,'underline' => 'single'], ['alignment' => 'center']);
-        $table->addCell(3333)->addText('ALUISIUS ABRIANTA', ['bold' => true,'underline' => 'single'], ['alignment' => 'center']);
+        $table->addCell(3333)->addText($laporan->user->name, ['bold' => true, 'underline' => 'single'], ['alignment' => 'center']);
+        $table->addCell(3333)->addText('BENI NURROFIK', ['bold' => true, 'underline' => 'single'], ['alignment' => 'center']);
+        $table->addCell(3333)->addText('ALUISIUS ABRIANTA', ['bold' => true, 'underline' => 'single'], ['alignment' => 'center']);
 
         // NIP
         $table->addRow();
@@ -1007,5 +1036,63 @@ class LaporanWordService
     private function getGoogleDriveViewUrl($driveId)
     {
         return "https://drive.google.com/file/d/{$driveId}/view";
+    }
+
+    private function convertWordToPdf($wordPath)
+    {
+        try {
+            Log::info("Starting Word to PDF conversion", ['word_path' => $wordPath]);
+
+            // Load Word document
+            $phpWord = IOFactory::load($wordPath);
+
+            // Convert to HTML first
+            $htmlWriter = new HTML($phpWord);
+
+            // Create temp HTML file
+            $htmlPath = str_replace('.docx', '.html', $wordPath);
+            $htmlWriter->save($htmlPath);
+
+            // Read HTML content
+            $htmlContent = file_get_contents($htmlPath);
+
+            // Configure DomPDF
+            $options = new Options();
+            $options->set('defaultFont', 'Arial');
+            $options->set('isRemoteEnabled', true);
+            $options->set('isHtml5ParserEnabled', true);
+            $options->set('defaultPaperSize', 'A4');
+            $options->set('defaultPaperOrientation', 'portrait');
+
+            // Create PDF
+            $dompdf = new Dompdf($options);
+            $dompdf->loadHtml($htmlContent);
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+
+            // Save PDF
+            $pdfPath = str_replace('.docx', '.pdf', $wordPath);
+            file_put_contents($pdfPath, $dompdf->output());
+
+            // Cleanup HTML file
+            if (file_exists($htmlPath)) {
+                unlink($htmlPath);
+            }
+
+            // Verify PDF was created
+            if (!file_exists($pdfPath) || filesize($pdfPath) == 0) {
+                throw new \Exception('PDF file was not created or is empty');
+            }
+
+            Log::info("PDF conversion successful", [
+                'pdf_path' => $pdfPath,
+                'pdf_size' => filesize($pdfPath)
+            ]);
+
+            return $pdfPath;
+        } catch (\Exception $e) {
+            Log::error('Error converting Word to PDF: ' . $e->getMessage());
+            throw new \Exception('PDF conversion failed: ' . $e->getMessage());
+        }
     }
 }

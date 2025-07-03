@@ -125,6 +125,26 @@ class LaporanHarianController extends Controller
                 throw new \Exception('Error saat generate dokumen Word: ' . $e->getMessage());
             }
 
+            // Pastikan bagian ini menghandle PDF:
+            try {
+                $documentPath = $this->wordService->generateLaporan($laporan);
+
+                if (!$documentPath || !file_exists($documentPath)) {
+                    throw new \Exception('Gagal membuat dokumen PDF. File tidak ditemukan.');
+                }
+
+                // Validasi bahwa file adalah PDF (opsional)
+                $fileExtension = pathinfo($documentPath, PATHINFO_EXTENSION);
+                if (strtolower($fileExtension) !== 'pdf') {
+                    Log::warning('Generated file is not PDF', [
+                        'file_path' => $documentPath,
+                        'extension' => $fileExtension
+                    ]);
+                }
+            } catch (\Exception $e) {
+                throw new \Exception('Error saat generate dokumen PDF: ' . $e->getMessage());
+            }
+
             // Upload ke Google Drive
             try {
                 $filename = $this->generateFilename($laporan);
@@ -315,6 +335,6 @@ class LaporanHarianController extends Controller
         $tanggal = $laporan->tanggal_mulai->format('Y-m-d');
         $user = Str::slug($laporan->user->name);
 
-        return "Laporan_Harian_{$proyek}_{$tanggal}_{$user}.docx";
+        return "Laporan_Harian_{$proyek}_{$tanggal}_{$user}.pdf";
     }
 }
