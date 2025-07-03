@@ -4,7 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use App\Services\GoogleDriveService;
-use App\Services\LaporanPdfService;
+use App\Services\LaporanWordService;
 
 
 class AppServiceProvider extends ServiceProvider
@@ -18,9 +18,8 @@ class AppServiceProvider extends ServiceProvider
             return new GoogleDriveService();
         });
 
-        // Bind PDF Service
-        $this->app->bind(LaporanPdfService::class, function ($app) {
-            return new LaporanPdfService($app->make(GoogleDriveService::class));
+        $this->app->singleton(LaporanWordService::class, function ($app) {
+            return new LaporanWordService();
         });
     }
 
