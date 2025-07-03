@@ -617,4 +617,25 @@ class GoogleDriveService
 
         return null;
     }
+
+    /**
+     * Download file dari Google Drive
+     */
+    public function downloadFile($fileId)
+    {
+        try {
+            $response = $this->service->files->get($fileId, [
+                'alt' => 'media'
+            ]);
+
+            return $response;
+        } catch (\Exception $e) {
+            Log::error('Error downloading file from Google Drive', [
+                'file_id' => $fileId,
+                'error' => $e->getMessage()
+            ]);
+
+            return null;
+        }
+    }
 }

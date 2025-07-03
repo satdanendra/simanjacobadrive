@@ -11,10 +11,21 @@ use Illuminate\Support\Facades\Log;
 
 class LaporanWordService
 {
+    private $tempFiles = [];
+    private $lampiranIndex = [];
+    private $lampiranCounter = 0;
+
     public function generateLaporan(LaporanHarian $laporan)
     {
         try {
             Log::info("Mulai generate laporan", ['laporan_id' => $laporan->id]);
+
+            // Reset lampiran tracking
+            $this->lampiranIndex = [];
+            $this->lampiranCounter = 0;
+
+            // Prepare lampiran mapping SEBELUM generate content
+            $this->prepareLampiranMapping($laporan);
 
             $phpWord = new PhpWord();
 
@@ -47,11 +58,11 @@ class LaporanWordService
             $section->addTextBreak();
 
             // Dasar Pelaksanaan Kegiatan
-            $this->addDasarPelaksanaan($section, $laporan, $boldStyle, $normalStyle);
+            $this->addDasarPelaksanaanWithLampiran($section, $laporan, $boldStyle, $normalStyle);
             $section->addTextBreak();
 
             // Bukti Pelaksanaan Pekerjaan
-            $this->addBuktiPelaksanaan($section, $laporan, $boldStyle, $normalStyle);
+            $this->addBuktiPelaksanaanWithLampiran($section, $laporan, $boldStyle, $normalStyle);
             $section->addTextBreak();
 
             // Kendala dan Solusi
@@ -65,11 +76,10 @@ class LaporanWordService
             // Pengesahan
             $this->addPengesahan($section, $laporan, $boldStyle, $normalStyle);
 
-            // Cek apakah ada bukti dukung untuk lampiran
-            if ($laporan->buktiDukungs->count() > 0) {
-                Log::info("Adding lampiran pages", ['bukti_count' => $laporan->buktiDukungs->count()]);
-                // Tambah halaman baru untuk lampiran
-                $this->addLampiranPages($phpWord, $laporan, $boldStyle, $normalStyle);
+            // Add unified lampiran pages
+            if (!empty($this->lampiranIndex)) {
+                Log::info("Adding unified lampiran pages", ['total_lampiran' => count($this->lampiranIndex)]);
+                $this->addUnifiedLampiranPages($phpWord, $laporan, $boldStyle, $normalStyle);
             }
 
             // Pastikan folder temp ada
@@ -84,7 +94,7 @@ class LaporanWordService
 
             Log::info("Saving document", ['temp_path' => $tempPath]);
 
-            // **PERBAIKAN**: Set memory limit dan timeout untuk file besar
+            // Set memory limit dan timeout untuk file besar
             ini_set('memory_limit', '512M');
             set_time_limit(300); // 5 minutes
 
@@ -103,7 +113,6 @@ class LaporanWordService
 
             // **PERBAIKAN**: Cleanup temporary image files SETELAH dokument selesai disave
             $this->cleanupTempFiles();
-
             return $tempPath;
         } catch (\Exception $e) {
             Log::error('Error dalam generateLaporan: ' . $e->getMessage(), [
@@ -113,7 +122,6 @@ class LaporanWordService
 
             // Cleanup jika terjadi error
             $this->cleanupTempFiles();
-
             throw $e;
         }
     }
@@ -183,7 +191,77 @@ class LaporanWordService
         $table->addCell(7000, ['width' => 7000])->addText($laporan->capaian, $boldStyle);
     }
 
-    private function addDasarPelaksanaan($section, $laporan, $boldStyle, $normalStyle)
+    // Method untuk prepare mapping lampiran
+    private function prepareLampiranMapping(LaporanHarian $laporan)
+    {
+        $this->lampiranCounter = 0;
+        $this->lampiranIndex = [];
+
+        Log::info("Preparing lampiran mapping", ['laporan_id' => $laporan->id]);
+
+        // Step 1: Collect bukti dukung dari dasar pelaksanaan (PRIORITAS PERTAMA)
+        foreach ($laporan->dasarPelaksanaans->sortBy('urutan') as $dasar) {
+            if ($dasar->bukti_dukung_id && $dasar->buktiDukung) {
+                $buktiDukungId = $dasar->bukti_dukung_id;
+
+                // Jika belum ada di index, tambahkan
+                if (!isset($this->lampiranIndex[$buktiDukungId])) {
+                    $this->lampiranCounter++;
+                    $this->lampiranIndex[$buktiDukungId] = [
+                        'nomor' => $this->lampiranCounter,
+                        'bukti_dukung' => $dasar->buktiDukung,
+                        'source' => 'dasar_pelaksanaan',
+                        'dasar_urutan' => $dasar->urutan
+                    ];
+
+                    Log::info("Added to lampiran mapping (dasar pelaksanaan)", [
+                        'bukti_dukung_id' => $buktiDukungId,
+                        'lampiran_nomor' => $this->lampiranCounter,
+                        'file_name' => $dasar->buktiDukung->nama_file
+                    ]);
+                }
+            }
+        }
+
+        // Step 2: Collect bukti dukung dari bukti pelaksanaan (PRIORITAS KEDUA)
+        foreach ($laporan->buktiDukungs->sortBy('pivot.urutan') as $bukti) {
+            $buktiDukungId = $bukti->id;
+
+            // Jika belum ada di index, tambahkan
+            if (!isset($this->lampiranIndex[$buktiDukungId])) {
+                $this->lampiranCounter++;
+                $this->lampiranIndex[$buktiDukungId] = [
+                    'nomor' => $this->lampiranCounter,
+                    'bukti_dukung' => $bukti,
+                    'source' => 'bukti_pelaksanaan',
+                    'pivot_urutan' => $bukti->pivot->urutan ?? 0
+                ];
+
+                Log::info("Added to lampiran mapping (bukti pelaksanaan)", [
+                    'bukti_dukung_id' => $buktiDukungId,
+                    'lampiran_nomor' => $this->lampiranCounter,
+                    'file_name' => $bukti->nama_file
+                ]);
+            } else {
+                // Sudah ada (dari dasar pelaksanaan), update source info
+                $this->lampiranIndex[$buktiDukungId]['also_in_bukti_pelaksanaan'] = true;
+                $this->lampiranIndex[$buktiDukungId]['pivot_urutan'] = $bukti->pivot->urutan ?? 0;
+
+                Log::info("Bukti dukung already in lampiran (from dasar pelaksanaan)", [
+                    'bukti_dukung_id' => $buktiDukungId,
+                    'existing_lampiran_nomor' => $this->lampiranIndex[$buktiDukungId]['nomor'],
+                    'file_name' => $bukti->nama_file
+                ]);
+            }
+        }
+
+        Log::info("Lampiran mapping completed", [
+            'total_unique_lampiran' => count($this->lampiranIndex),
+            'total_counter' => $this->lampiranCounter
+        ]);
+    }
+
+    private function addDasarPelaksanaanWithLampiran($section, $laporan, $boldStyle, $normalStyle)
     {
         $table = $section->addTable([
             'borderSize' => 6,
@@ -199,12 +277,25 @@ class LaporanWordService
 
         // Isi
         if ($laporan->dasarPelaksanaans->count() > 0) {
-            foreach ($laporan->dasarPelaksanaans as $index => $dasar) {
+            foreach ($laporan->dasarPelaksanaans->sortBy('urutan') as $index => $dasar) {
                 $number = $index + 1;
-                $text = $number . '. ' . $dasar->formatted_deskripsi;
+                $text = $dasar->formatted_deskripsi;
+
+                // Tambahkan referensi urutan lampiran ke-sekian jika diperlukan
+                // if ($dasar->bukti_dukung_id && isset($this->lampiranIndex[$dasar->bukti_dukung_id])) {
+                //     $lampiranNomor = $this->lampiranIndex[$dasar->bukti_dukung_id]['nomor'];
+                //     $text .= " (Lihat Lampiran {$lampiranNomor})";
+
+                //     Log::info("Added lampiran reference to dasar pelaksanaan", [
+                //         'dasar_urutan' => $number,
+                //         'bukti_dukung_id' => $dasar->bukti_dukung_id,
+                //         'lampiran_nomor' => $lampiranNomor
+                //     ]);
+                // }
+
                 $table->addRow();
                 $table->addCell(1000)->addText((string)$number . '.', $normalStyle);
-                $table->addCell(9000)->addText($dasar->formatted_deskripsi, $normalStyle);
+                $table->addCell(9000)->addText($text, $normalStyle);
             }
         } else {
             $table->addRow();
@@ -212,7 +303,7 @@ class LaporanWordService
         }
     }
 
-    private function addBuktiPelaksanaan($section, $laporan, $boldStyle, $normalStyle)
+    private function addBuktiPelaksanaanWithLampiran($section, $laporan, $boldStyle, $normalStyle)
     {
         $table = $section->addTable([
             'borderSize' => 6,
@@ -228,22 +319,45 @@ class LaporanWordService
             $boldStyle
         );
 
+        // Isi (Dengan nama file lampiran dan urutan lampiran ke-sekian yang lengkap)
+        // if ($laporan->buktiDukungs->count() > 0) {
+        //     $counter = 1;
+        //     foreach ($laporan->buktiDukungs->sortBy('pivot.urutan') as $bukti) {
+        //         $buktiDukungId = $bukti->id;
+
+        //         if (isset($this->lampiranIndex[$buktiDukungId])) {
+        //             $lampiranNomor = $this->lampiranIndex[$buktiDukungId]['nomor'];
+        //             $text = $counter . '. ' . $bukti->nama_file . ' (Lihat Lampiran ' . $lampiranNomor . ')';
+
+        //             if ($bukti->keterangan) {
+        //                 $text .= ' - ' . $bukti->keterangan;
+        //             }
+
+        //             $table->addRow();
+        //             $table->addCell(null)->addText($text, $normalStyle);
+
+        //             Log::info("Added lampiran reference to bukti pelaksanaan", [
+        //                 'bukti_counter' => $counter,
+        //                 'bukti_dukung_id' => $buktiDukungId,
+        //                 'lampiran_nomor' => $lampiranNomor,
+        //                 'file_name' => $bukti->nama_file
+        //             ]);
+
+        //             $counter++;
+        //         }
+        //     }
+        // } else {
+        //     $table->addRow();
+        //     $table->addCell(null)->addText('1. (tidak ada)', $normalStyle);
+        // }
+
         // Isi
+        $table->addRow();
+
         if ($laporan->buktiDukungs->count() > 0) {
-            foreach ($laporan->buktiDukungs as $index => $bukti) {
-                $number = $index + 1;
-                $text = $number . '. ' . $bukti->nama_file . ' (Lihat Lampiran ' . $number . ')';
-
-                if ($bukti->keterangan) {
-                    $text .= ' - ' . $bukti->keterangan;
-                }
-
-                $table->addRow();
-                $table->addCell(null)->addText($text, $normalStyle);
-            }
+            $table->addCell(null)->addText('(terlampir)', $normalStyle);
         } else {
-            $table->addRow();
-            $table->addCell(null)->addText('1. (tidak ada)', $normalStyle);
+            $table->addCell(null)->addText('-', $normalStyle);
         }
     }
 
@@ -329,14 +443,35 @@ class LaporanWordService
 
         // Tanda tangan
         $table->addRow();
-        $table->addCell(3333)->addText($laporan->user->name, $boldStyle, ['alignment' => 'center']);
-        $table->addCell(3333)->addText('BENI NURROFIK', $boldStyle, ['alignment' => 'center']);
-        $table->addCell(3333)->addText('ALUISIUS ABRIANTA', $boldStyle, ['alignment' => 'center']);
+        $table->addCell(3333)->addText($laporan->user->name, ['bold' => true,'underline' => 'single'], ['alignment' => 'center']);
+        $table->addCell(3333)->addText('BENI NURROFIK', ['bold' => true,'underline' => 'single'], ['alignment' => 'center']);
+        $table->addCell(3333)->addText('ALUISIUS ABRIANTA', ['bold' => true,'underline' => 'single'], ['alignment' => 'center']);
+
+        // NIP
+        $table->addRow();
+        $table->addCell(3333)->addText('NIP. 19701030 199312 1001', $normalStyle, ['alignment' => 'center']);
+        $table->addCell(3333)->addText('NIP. 19810510 200312 1004', $normalStyle, ['alignment' => 'center']);
+        $table->addCell(3333)->addText('NIP. 19791005 200212 1003', $normalStyle, ['alignment' => 'center']);
     }
 
-    private function addLampiranPages($phpWord, $laporan, $boldStyle, $normalStyle)
+    // Method untuk generate unified lampiran pages
+    private function addUnifiedLampiranPages($phpWord, $laporan, $boldStyle, $normalStyle)
     {
-        foreach ($laporan->buktiDukungs as $index => $bukti) {
+        // Sort lampiran berdasarkan nomor urut
+        $sortedLampiran = collect($this->lampiranIndex)->sortBy('nomor');
+
+        foreach ($sortedLampiran as $buktiDukungId => $lampiranData) {
+            $bukti = $lampiranData['bukti_dukung'];
+            $nomorLampiran = $lampiranData['nomor'];
+            $source = $lampiranData['source'];
+
+            Log::info("Adding lampiran page", [
+                'lampiran_nomor' => $nomorLampiran,
+                'bukti_dukung_id' => $buktiDukungId,
+                'file_name' => $bukti->nama_file,
+                'source' => $source
+            ]);
+
             // Tambah section baru (halaman baru)
             $lampiranSection = $phpWord->addSection([
                 'marginTop' => Converter::cmToTwip(2),
@@ -350,12 +485,27 @@ class LaporanWordService
             $lampiranSection->addTextBreak();
 
             // Judul lampiran
-            $nomorLampiran = $index + 1;
             $lampiranSection->addText(
                 "Lampiran {$nomorLampiran}: {$bukti->nama_file}",
                 $boldStyle,
                 ['alignment' => 'center']
             );
+            $lampiranSection->addTextBreak();
+
+            // Source info (optional, untuk debugging)
+            if (isset($lampiranData['also_in_bukti_pelaksanaan'])) {
+                $sourceText = "Digunakan di: Dasar Pelaksanaan dan Bukti Pelaksanaan";
+            } else {
+                $sourceText = $source === 'dasar_pelaksanaan' ?
+                    "Digunakan di: Dasar Pelaksanaan Kegiatan" :
+                    "Digunakan di: Bukti Pelaksanaan Pekerjaan";
+            }
+
+            $lampiranSection->addText($sourceText, [
+                'size' => 8,
+                'italic' => true,
+                'color' => '666666'
+            ], ['alignment' => 'center']);
             $lampiranSection->addTextBreak();
 
             // Keterangan jika ada
@@ -491,14 +641,7 @@ class LaporanWordService
         );
     }
 
-    // **PERBAIKAN**: Modifikasi method generateLaporan untuk cleanup file temporary di akhir
-    // Tambahkan property untuk track temporary files
-    private $tempFiles = [];
-
-    // Di method addImageToLampiran, setelah berhasil buat temp file:
-    // $this->tempFiles[] = $tempImagePath;
-
-    // Di akhir method generateLaporan, tambahkan cleanup:
+    // Cleanup
     private function cleanupTempFiles()
     {
         foreach ($this->tempFiles as $tempFile) {
